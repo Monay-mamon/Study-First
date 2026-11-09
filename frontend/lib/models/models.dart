@@ -1,5 +1,7 @@
 enum YearLevel { freshman, sophomore, junior, senior }
 
+enum PostStatus { open, matched, cancelled }
+
 class Rating {
   final int stars;
   final String comment;
@@ -10,6 +12,50 @@ class Rating {
     required this.comment,
     required this.fromUsername,
   });
+}
+
+class HelpPost {
+  final String id;
+  final String tutee; // username
+  final String campus;
+  final String subject;
+  final String course;
+  final String description;
+  final DateTime createdAt;
+  final PostStatus status;
+
+  HelpPost({
+    required this.id,
+    required this.tutee,
+    required this.campus,
+    required this.subject,
+    required this.course,
+    required this.description,
+    required this.createdAt,
+    required this.status,
+  });
+
+  HelpPost copyWith({
+    String? id,
+    String? tutee,
+    String? campus,
+    String? subject,
+    String? course,
+    String? description,
+    DateTime? createdAt,
+    PostStatus? status,
+  }) {
+    return HelpPost(
+      id: id ?? this.id,
+      tutee: tutee ?? this.tutee,
+      campus: campus ?? this.campus,
+      subject: subject ?? this.subject,
+      course: course ?? this.course,
+      description: description ?? this.description,
+      createdAt: createdAt ?? this.createdAt,
+      status: status ?? this.status,
+    );
+  }
 }
 
 class UserProfile {

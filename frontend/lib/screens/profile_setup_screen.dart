@@ -105,11 +105,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       appBar: AppBar(
         title: const Text('Profile Setup'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => appState.logout(),
-            tooltip: 'Logout',
-          ),
+          if (!(ModalRoute.of(context)?.canPop ?? false))
+            IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: () => appState.logout(),
+              tooltip: 'Logout',
+            ),
         ],
       ),
       body: SingleChildScrollView(

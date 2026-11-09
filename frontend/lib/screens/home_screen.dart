@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../data/app_state.dart';
+import 'need_tutor_screen.dart';
 import 'profile_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -117,8 +118,11 @@ class HomeScreen extends StatelessWidget {
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Coming in the next step')),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const NeedTutorScreen(),
+                          ),
                         );
                       },
                       icon: const Icon(Icons.help_outline),
