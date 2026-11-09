@@ -77,6 +77,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
 
     appState.updateCurrentUser(updatedUser);
+
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
   }
 
   String _yearLabel(YearLevel year) {
