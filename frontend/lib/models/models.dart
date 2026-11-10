@@ -4,6 +4,10 @@ enum PostStatus { open, matched, cancelled }
 
 enum OfferStatus { pending, accepted, declined, withdrawn }
 
+enum NotificationType { newOffer, offerAccepted, offerDeclined }
+
+enum SessionStatus { active, completed, cancelled }
+
 class Rating {
   final int stars;
   final String comment;
@@ -92,6 +96,90 @@ class TutorOffer {
       tutee: tutee ?? this.tutee,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+    );
+  }
+}
+
+class AppNotification {
+  final String id;
+  final String recipient; // username
+  final NotificationType type;
+  final String message;
+  final String? offerId;
+  final DateTime createdAt;
+  final bool read;
+
+  AppNotification({
+    required this.id,
+    required this.recipient,
+    required this.type,
+    required this.message,
+    this.offerId,
+    required this.createdAt,
+    this.read = false,
+  });
+
+  AppNotification copyWith({
+    String? id,
+    String? recipient,
+    NotificationType? type,
+    String? message,
+    String? offerId,
+    DateTime? createdAt,
+    bool? read,
+  }) {
+    return AppNotification(
+      id: id ?? this.id,
+      recipient: recipient ?? this.recipient,
+      type: type ?? this.type,
+      message: message ?? this.message,
+      offerId: offerId ?? this.offerId,
+      createdAt: createdAt ?? this.createdAt,
+      read: read ?? this.read,
+    );
+  }
+}
+
+class TutoringSession {
+  final String id;
+  final String tutor; // username
+  final String tutee; // username
+  final String subject;
+  final String course;
+  final String postId;
+  final DateTime createdAt;
+  final SessionStatus status;
+
+  TutoringSession({
+    required this.id,
+    required this.tutor,
+    required this.tutee,
+    required this.subject,
+    required this.course,
+    required this.postId,
+    required this.createdAt,
+    required this.status,
+  });
+
+  TutoringSession copyWith({
+    String? id,
+    String? tutor,
+    String? tutee,
+    String? subject,
+    String? course,
+    String? postId,
+    DateTime? createdAt,
+    SessionStatus? status,
+  }) {
+    return TutoringSession(
+      id: id ?? this.id,
+      tutor: tutor ?? this.tutor,
+      tutee: tutee ?? this.tutee,
+      subject: subject ?? this.subject,
+      course: course ?? this.course,
+      postId: postId ?? this.postId,
+      createdAt: createdAt ?? this.createdAt,
+      status: status ?? this.status,
     );
   }
 }

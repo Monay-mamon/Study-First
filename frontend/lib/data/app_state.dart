@@ -7,17 +7,22 @@ class AppState extends ChangeNotifier {
   UserProfile? _currentUser;
   List<HelpPost> _posts = [];
   List<TutorOffer> _offers = [];
+  List<AppNotification> _notifications = [];
+  List<TutoringSession> _sessions = [];
 
   AppState() {
     _seedDemoUsers();
     _seedDemoPosts();
     _seedDemoOffers();
+    _seedDemoNotifications();
   }
 
   UserProfile? get currentUser => _currentUser;
   Map<String, UserProfile> get users => _users;
   List<HelpPost> get posts => List.unmodifiable(_posts);
   List<TutorOffer> get offers => List.unmodifiable(_offers);
+  List<AppNotification> get notifications => List.unmodifiable(_notifications);
+  List<TutoringSession> get sessions => List.unmodifiable(_sessions);
 
   UserProfile? userByUsername(String username) {
     return _users[username.trim().toLowerCase()];
@@ -140,6 +145,20 @@ class AppState extends ChangeNotifier {
     ];
   }
 
+  void _seedDemoNotifications() {
+    _notifications = [
+      AppNotification(
+        id: 'notif_1',
+        recipient: 'alice',
+        type: NotificationType.newOffer,
+        message: 'bob wants to tutor you in Math (MATH 101)',
+        offerId: 'offer_1',
+        createdAt: DateTime.now().subtract(const Duration(hours: 2)),
+        read: false,
+      ),
+    ];
+  }
+
   String? createPost({
     required String subject,
     required String course,
@@ -186,12 +205,41 @@ class AppState extends ChangeNotifier {
   }
 
   void cancelPost(String id) {
+    final now = DateTime.now();
+    final post = _posts.cast<HelpPost?>().firstWhere(
+          (p) => p?.id == id,
+          orElse: () => null,
+        );
+
+    final pendingForPost = _offers
+        .where((o) => o.postId == id && o.status == OfferStatus.pending)
+        .toList();
+
     _posts = _posts.map((p) {
       if (p.id == id) {
         return p.copyWith(status: PostStatus.cancelled);
       }
       return p;
     }).toList();
+
+    _offers = _offers.map((o) {
+      if (o.postId == id && o.status == OfferStatus.pending) {
+        return o.copyWith(status: OfferStatus.declined);
+      }
+      return o;
+    }).toList();
+
+    final cancelNotifs = pendingForPost.map((o) => AppNotification(
+          id: '${now.millisecondsSinceEpoch}_canc_${o.id}',
+          recipient: o.tutor,
+          type: NotificationType.offerDeclined,
+          message: 'The request for ${post?.subject ?? 'subject'} was cancelled.',
+          offerId: o.id,
+          createdAt: now,
+          read: false,
+        ));
+
+    _notifications = [..._notifications, ...cancelNotifs];
     notifyListeners();
   }
 
@@ -228,16 +276,28 @@ class AppState extends ChangeNotifier {
       return 'You can only have 3 pending requests.';
     }
 
+    final now = DateTime.now();
     final newOffer = TutorOffer(
-      id: '${DateTime.now().millisecondsSinceEpoch}_${_offers.length}',
+      id: '${now.millisecondsSinceEpoch}_${_offers.length}',
       postId: postId,
       tutor: _currentUser!.username,
       tutee: post.tutee,
       status: OfferStatus.pending,
-      createdAt: DateTime.now(),
+      createdAt: now,
+    );
+
+    final newNotif = AppNotification(
+      id: '${now.millisecondsSinceEpoch}_notif',
+      recipient: post.tutee,
+      type: NotificationType.newOffer,
+      message: '${_currentUser!.username} wants to tutor you in ${post.subject} (${post.course})',
+      offerId: newOffer.id,
+      createdAt: now,
+      read: false,
     );
 
     _offers = [..._offers, newOffer];
+    _notifications = [..._notifications, newNotif];
     notifyListeners();
     return null;
   }
@@ -260,11 +320,186 @@ class AppState extends ChangeNotifier {
         .toList();
   }
 
+  List<TutorOffer> pendingOffersForTutee(String tutee) {
+    return _offers
+        .where((o) =>
+            o.tutee.toLowerCase() == tutee.toLowerCase() &&
+            o.status == OfferStatus.pending)
+        .toList();
+  }
+
   bool hasPendingOffer(String tutor, String postId) {
     return _offers.any((o) =>
         o.tutor.toLowerCase() == tutor.toLowerCase() &&
         o.postId == postId &&
         o.status == OfferStatus.pending);
+  }
+
+  String? acceptOffer(String offerId) {
+    if (_currentUser == null) return 'Not logged in.';
+    final offer = _offers.cast<TutorOffer?>().firstWhere(
+          (o) => o?.id == offerId,
+          orElse: () => null,
+        );
+    if (offer == null) return 'Offer not found.';
+    if (offer.tutee.toLowerCase() != _currentUser!.username.toLowerCase()) {
+      return 'Only the tutee can accept this offer.';
+    }
+    if (offer.status != OfferStatus.pending) {
+      return 'Offer is no longer pending.';
+    }
+
+    final post = _posts.cast<HelpPost?>().firstWhere(
+          (p) => p?.id == offer.postId,
+          orElse: () => null,
+        );
+    if (post == null) return 'Associated post not found.';
+
+    final now = DateTime.now();
+
+    // 1. Mark offer accepted, 2. Decline other pending offers on this post
+    _offers = _offers.map((o) {
+      if (o.id == offerId) {
+        return o.copyWith(status: OfferStatus.accepted);
+      }
+      if (o.postId == offer.postId && o.status == OfferStatus.pending) {
+        return o.copyWith(status: OfferStatus.declined);
+      }
+      return o;
+    }).toList();
+
+    // 3. Mark post matched
+    _posts = _posts.map((p) {
+      if (p.id == offer.postId) {
+        return p.copyWith(status: PostStatus.matched);
+      }
+      return p;
+    }).toList();
+
+    // 4. Create active tutoring session
+    final newSession = TutoringSession(
+      id: '${now.millisecondsSinceEpoch}_session',
+      tutor: offer.tutor,
+      tutee: offer.tutee,
+      subject: post.subject,
+      course: post.course,
+      postId: post.id,
+      createdAt: now,
+      status: SessionStatus.active,
+    );
+    _sessions = [..._sessions, newSession];
+
+    // 5. Notify accepted tutor
+    final acceptedNotif = AppNotification(
+      id: '${now.millisecondsSinceEpoch}_acc',
+      recipient: offer.tutor,
+      type: NotificationType.offerAccepted,
+      message: 'Your request to tutor @${offer.tutee} in ${post.subject} was accepted!',
+      offerId: offer.id,
+      createdAt: now,
+      read: false,
+    );
+
+    // 6. Notify declined tutors
+    final declinedOffers = _offers
+        .where((o) => o.postId == offer.postId && o.status == OfferStatus.declined && o.id != offer.id);
+    final declinedNotifs = declinedOffers.map((d) => AppNotification(
+          id: '${now.millisecondsSinceEpoch}_dec_${d.id}',
+          recipient: d.tutor,
+          type: NotificationType.offerDeclined,
+          message: 'Your request for @${d.tutee} in ${post.subject} was declined.',
+          offerId: d.id,
+          createdAt: now,
+          read: false,
+        ));
+
+    _notifications = [..._notifications, acceptedNotif, ...declinedNotifs];
+    notifyListeners();
+    return null;
+  }
+
+  String? declineOffer(String offerId) {
+    if (_currentUser == null) return 'Not logged in.';
+    final offer = _offers.cast<TutorOffer?>().firstWhere(
+          (o) => o?.id == offerId,
+          orElse: () => null,
+        );
+    if (offer == null) return 'Offer not found.';
+    if (offer.tutee.toLowerCase() != _currentUser!.username.toLowerCase()) {
+      return 'Only the tutee can decline this offer.';
+    }
+    if (offer.status != OfferStatus.pending) {
+      return 'Offer is no longer pending.';
+    }
+
+    final post = _posts.cast<HelpPost?>().firstWhere(
+          (p) => p?.id == offer.postId,
+          orElse: () => null,
+        );
+    final now = DateTime.now();
+
+    _offers = _offers.map((o) {
+      if (o.id == offerId) {
+        return o.copyWith(status: OfferStatus.declined);
+      }
+      return o;
+    }).toList();
+
+    final declineNotif = AppNotification(
+      id: '${now.millisecondsSinceEpoch}_dec',
+      recipient: offer.tutor,
+      type: NotificationType.offerDeclined,
+      message: 'Your request for @${offer.tutee} in ${post?.subject ?? 'subject'} was declined.',
+      offerId: offer.id,
+      createdAt: now,
+      read: false,
+    );
+
+    _notifications = [..._notifications, declineNotif];
+    notifyListeners();
+    return null;
+  }
+
+  List<AppNotification> notificationsFor(String username) {
+    final list = _notifications
+        .where((n) => n.recipient.toLowerCase() == username.toLowerCase())
+        .toList();
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
+  int unreadCountFor(String username) {
+    return notificationsFor(username).where((n) => !n.read).length;
+  }
+
+  void markAllRead(String username) {
+    _notifications = _notifications.map((n) {
+      if (n.recipient.toLowerCase() == username.toLowerCase() && !n.read) {
+        return n.copyWith(read: true);
+      }
+      return n;
+    }).toList();
+    notifyListeners();
+  }
+
+  List<TutoringSession> sessionsFor(String username) {
+    final list = _sessions
+        .where((s) =>
+            s.status == SessionStatus.active &&
+            (s.tutor.toLowerCase() == username.toLowerCase() ||
+                s.tutee.toLowerCase() == username.toLowerCase()))
+        .toList();
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
+  bool hasActiveSessionBetween(String a, String b) {
+    return _sessions.any((s) =>
+        s.status == SessionStatus.active &&
+        ((s.tutor.toLowerCase() == a.toLowerCase() &&
+                s.tutee.toLowerCase() == b.toLowerCase()) ||
+            (s.tutor.toLowerCase() == b.toLowerCase() &&
+                s.tutee.toLowerCase() == a.toLowerCase())));
   }
 
   String? register(String username, String password) {

@@ -13,7 +13,7 @@ class BrowsePostsScreen extends StatefulWidget {
 }
 
 class _BrowsePostsScreenState extends State<BrowsePostsScreen> {
-  String? _selectedSubject; // null or 'All subjects' means all
+  String _selectedSubject = 'All subjects';
   final _courseSearchController = TextEditingController();
 
   @override
@@ -51,13 +51,12 @@ class _BrowsePostsScreenState extends State<BrowsePostsScreen> {
       // Exclude own posts
       if (p.tutee.toLowerCase() == currentUser.username.toLowerCase()) return false;
       // Filter by subject
-      if (_selectedSubject != null && _selectedSubject != 'All subjects') {
+      if (_selectedSubject != 'All subjects') {
         if (p.subject != _selectedSubject) return false;
       }
-      // Filter by course query
+      // Filter by course code only (not description)
       if (query.isNotEmpty) {
-        if (!p.course.toLowerCase().contains(query) &&
-            !p.description.toLowerCase().contains(query)) {
+        if (!p.course.toLowerCase().contains(query)) {
           return false;
         }
       }
@@ -127,7 +126,7 @@ class _BrowsePostsScreenState extends State<BrowsePostsScreen> {
                               ],
                               onChanged: (val) {
                                 setState(() {
-                                  _selectedSubject = val == 'All subjects' ? null : val;
+                                  _selectedSubject = val ?? 'All subjects';
                                 });
                               },
                             ),
@@ -135,11 +134,11 @@ class _BrowsePostsScreenState extends State<BrowsePostsScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      // Course Search
+                      // Course Search (matches course code only)
                       TextField(
                         controller: _courseSearchController,
                         decoration: const InputDecoration(
-                          labelText: 'Search course code or keyword',
+                          labelText: 'Search course code (e.g. MATH 101)',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.search),
                           isDense: true,

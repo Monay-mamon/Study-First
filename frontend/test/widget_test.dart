@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:study_first/data/app_state.dart';
 import 'package:study_first/main.dart';
+import 'package:study_first/models/models.dart';
 
 void main() {
   testWidgets('Study First app starts with AuthScreen', (WidgetTester tester) async {
@@ -64,6 +65,37 @@ void main() {
     expect(find.text('MATH 101'), findsNothing);
   });
 
+  testWidgets('Alice accepts bobs seeded offer, notifications clear, session appears on home', (WidgetTester tester) async {
+    await tester.pumpWidget(const StudyFirstApp());
+
+    // Login as alice (who has a seeded notification from bob)
+    await tester.enterText(find.byType(TextField).at(0), 'alice');
+    await tester.enterText(find.byType(TextField).at(1), 'demo123');
+    await tester.tap(find.text('Login'));
+    await tester.pumpAndSettle();
+
+    // Tap notification bell
+    await tester.tap(find.byIcon(Icons.notifications));
+    await tester.pumpAndSettle();
+
+    // Verify notification message is shown
+    expect(find.textContaining('bob wants to tutor you'), findsOneWidget);
+
+    // Tap Accept button
+    await tester.tap(find.text('Accept'));
+    await tester.pumpAndSettle();
+
+    // Verify SnackBar "Session created"
+    expect(find.text('Session created'), findsOneWidget);
+
+    // Go back to Home
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // Verify session card appears on Home
+    expect(find.textContaining('is tutoring you'), findsOneWidget);
+  });
+
   test('AppState enforces maximum of 3 open posts per user', () {
     final appState = AppState();
     appState.register('student1', 'pass123');
@@ -121,5 +153,49 @@ void main() {
     appState.login('bob', 'demo123');
     final err4 = appState.sendOffer(charliePost2Id);
     expect(err4, 'You can only have 3 pending requests.');
+  });
+
+  test('AppState: accepting offer creates active session, matches post, declines other offers', () {
+    final appState = AppState();
+    appState.login('alice', 'demo123');
+
+    final offerId = appState.offers.first.id;
+    final postId = appState.offers.first.postId;
+
+    expect(appState.sessions.isEmpty, true);
+
+    final err = appState.acceptOffer(offerId);
+    expect(err, null);
+
+    expect(appState.sessionsFor('alice').length, 1);
+    expect(appState.sessionsFor('alice').first.tutor, 'bob');
+    expect(appState.sessionsFor('alice').first.tutee, 'alice');
+
+    final post = appState.posts.firstWhere((p) => p.id == postId);
+    expect(post.status, PostStatus.matched);
+  });
+
+  test('AppState: cancelPost declines pending offers', () {
+    final appState = AppState();
+    appState.login('alice', 'demo123');
+    const postId = 'post_1';
+
+    expect(appState.pendingOffersBy('bob').isNotEmpty, true);
+
+    appState.cancelPost(postId);
+
+    expect(appState.pendingOffersBy('bob').where((o) => o.postId == postId).isEmpty, true);
+  });
+
+  test('AppState: contact visible only with active session or own profile', () {
+    final appState = AppState();
+    appState.login('alice', 'demo123');
+
+    expect(appState.hasActiveSessionBetween('alice', 'bob'), false);
+
+    final offerId = appState.offers.first.id;
+    appState.acceptOffer(offerId);
+
+    expect(appState.hasActiveSessionBetween('alice', 'bob'), true);
   });
 }

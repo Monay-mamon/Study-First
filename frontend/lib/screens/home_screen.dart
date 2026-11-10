@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../data/app_state.dart';
 import 'browse_posts_screen.dart';
 import 'need_tutor_screen.dart';
+import 'notifications_screen.dart';
 import 'profile_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -14,11 +15,31 @@ class HomeScreen extends StatelessWidget {
     final currentUser = appState.currentUser;
     final theme = Theme.of(context);
 
+    final unreadCount = currentUser != null ? appState.unreadCountFor(currentUser.username) : 0;
+    final userSessions = currentUser != null ? appState.sessionsFor(currentUser.username) : [];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Study First'),
         actions: [
-          if (currentUser != null)
+          if (currentUser != null) ...[
+            Badge(
+              isLabelVisible: unreadCount > 0,
+              label: Text('$unreadCount'),
+              child: IconButton(
+                icon: const Icon(Icons.notifications),
+                tooltip: 'Notifications',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 4),
             IconButton(
               icon: const Icon(Icons.person),
               tooltip: 'My Profile',
@@ -31,6 +52,7 @@ class HomeScreen extends StatelessWidget {
                 );
               },
             ),
+          ],
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
@@ -56,30 +78,102 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Expanded(
-                    child: Center(
-                      child: Card(
-                        elevation: 0,
-                        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.all(32.0),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.event_note, size: 48, color: Colors.grey),
-                              SizedBox(height: 16),
-                              Text(
-                                'No sessions yet. Become a tutor or request one below.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(fontSize: 16, color: Colors.grey),
+                    child: userSessions.isEmpty
+                        ? Center(
+                            child: Card(
+                              elevation: 0,
+                              color: theme.colorScheme.surfaceContainerHighest
+                                  .withOpacity(0.5),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
                               ),
-                            ],
+                              child: const Padding(
+                                padding: EdgeInsets.all(32.0),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.event_note,
+                                        size: 48, color: Colors.grey),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'No sessions yet. Become a tutor or request one below.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          fontSize: 16, color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: userSessions.length,
+                            itemBuilder: (context, index) {
+                              final session = userSessions[index];
+                              final isTutor = session.tutor.toLowerCase() ==
+                                  currentUser!.username.toLowerCase();
+                              final otherUser =
+                                  isTutor ? session.tutee : session.tutor;
+                              final roleText = isTutor
+                                  ? 'You are tutoring @$otherUser'
+                                  : '@$otherUser is tutoring you';
+
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                elevation: 2,
+                                child: InkWell(
+                                  onTap: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                            'Session details coming in the next step'),
+                                      ),
+                                    );
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Chip(
+                                              label: Text(session.subject),
+                                              backgroundColor: theme
+                                                  .colorScheme
+                                                  .primaryContainer,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              session.course,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                            const Spacer(),
+                                            Text(
+                                              '${session.createdAt.month}/${session.createdAt.day}',
+                                              style: theme.textTheme.bodySmall,
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          roleText,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: theme.colorScheme.primary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           ),
-                        ),
-                      ),
-                    ),
                   ),
                 ],
               ),

@@ -10,11 +10,12 @@ class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.username});
 
   bool _canViewContact(AppState appState, UserProfile profile) {
-    // Contact info is shown only if it is the current user's own profile.
-    // (Sessions come later, but this helper encapsulates the rule.)
     final currentUser = appState.currentUser;
     if (currentUser == null) return false;
-    return currentUser.username.toLowerCase() == profile.username.toLowerCase();
+    if (currentUser.username.toLowerCase() == profile.username.toLowerCase()) {
+      return true;
+    }
+    return appState.hasActiveSessionBetween(currentUser.username, profile.username);
   }
 
   String _yearLabel(YearLevel? year) {
