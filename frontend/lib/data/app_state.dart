@@ -15,6 +15,7 @@ class AppState extends ChangeNotifier {
     _seedDemoPosts();
     _seedDemoOffers();
     _seedDemoNotifications();
+    _seedDemoSessions();
   }
 
   UserProfile? get currentUser => _currentUser;
@@ -159,6 +160,22 @@ class AppState extends ChangeNotifier {
     ];
   }
 
+  void _seedDemoSessions() {
+    final now = DateTime.now();
+    _sessions = [
+      TutoringSession(
+        id: 'session_charlie_alice',
+        tutor: 'charlie',
+        tutee: 'alice',
+        subject: 'History',
+        course: 'HIST 101',
+        postId: 'post_5',
+        createdAt: now.subtract(const Duration(days: 1)),
+        status: SessionStatus.active,
+      ),
+    ];
+  }
+
   String? createPost({
     required String subject,
     required String course,
@@ -204,13 +221,18 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  void cancelPost(String id) {
-    final now = DateTime.now();
+  String? cancelPost(String id) {
+    if (_currentUser == null) return 'Not logged in.';
     final post = _posts.cast<HelpPost?>().firstWhere(
           (p) => p?.id == id,
           orElse: () => null,
         );
+    if (post == null) return 'Post not found.';
+    if (post.tutee.toLowerCase() != _currentUser!.username.toLowerCase()) {
+      return 'Only the tutee who created this post can cancel it.';
+    }
 
+    final now = DateTime.now();
     final pendingForPost = _offers
         .where((o) => o.postId == id && o.status == OfferStatus.pending)
         .toList();
@@ -233,7 +255,7 @@ class AppState extends ChangeNotifier {
           id: '${now.millisecondsSinceEpoch}_canc_${o.id}',
           recipient: o.tutor,
           type: NotificationType.offerDeclined,
-          message: 'The request for ${post?.subject ?? 'subject'} was cancelled.',
+          message: 'The request for ${post.subject} was cancelled.',
           offerId: o.id,
           createdAt: now,
           read: false,
@@ -241,6 +263,7 @@ class AppState extends ChangeNotifier {
 
     _notifications = [..._notifications, ...cancelNotifs];
     notifyListeners();
+    return null;
   }
 
   List<HelpPost> openPostsBy(String username) {
@@ -357,6 +380,11 @@ class AppState extends ChangeNotifier {
 
     final now = DateTime.now();
 
+    // Identify offers that are pending right before accepting this offer
+    final pendingOffersOnPost = _offers
+        .where((o) => o.postId == offer.postId && o.status == OfferStatus.pending && o.id != offer.id)
+        .toList();
+
     // 1. Mark offer accepted, 2. Decline other pending offers on this post
     _offers = _offers.map((o) {
       if (o.id == offerId) {
@@ -400,10 +428,8 @@ class AppState extends ChangeNotifier {
       read: false,
     );
 
-    // 6. Notify declined tutors
-    final declinedOffers = _offers
-        .where((o) => o.postId == offer.postId && o.status == OfferStatus.declined && o.id != offer.id);
-    final declinedNotifs = declinedOffers.map((d) => AppNotification(
+    // 6. Notify ONLY the offers that were pending and got declined in this call
+    final declinedNotifs = pendingOffersOnPost.map((d) => AppNotification(
           id: '${now.millisecondsSinceEpoch}_dec_${d.id}',
           recipient: d.tutor,
           type: NotificationType.offerDeclined,
@@ -458,6 +484,333 @@ class AppState extends ChangeNotifier {
     _notifications = [..._notifications, declineNotif];
     notifyListeners();
     return null;
+  }
+
+  TutoringSession? sessionById(String id) {
+    return _sessions.cast<TutoringSession?>().firstWhere(
+          (s) => s?.id == id,
+          orElse: () => null,
+        );
+  }
+
+  String? updateSessionNote(String sessionId, String note) {
+    if (_currentUser == null) return 'Not logged in.';
+    final session = sessionById(sessionId);
+    if (session == null) return 'Session not found.';
+    if (session.status != SessionStatus.active) {
+      return 'Can only edit notes on active sessions.';
+    }
+    final trimmed = note.trim();
+    if (trimmed.length > 200) {
+      return 'Note must be at most 200 characters.';
+    }
+
+    final isTutor = session.tutor.toLowerCase() == _currentUser!.username.toLowerCase();
+    final isTutee = session.tutee.toLowerCase() == _currentUser!.username.toLowerCase();
+
+    if (!isTutor && !isTutee) {
+      return 'You are not part of this session.';
+    }
+
+    _sessions = _sessions.map((s) {
+      if (s.id == sessionId) {
+        if (isTutor) {
+          return s.copyWith(tutorNote: trimmed);
+        } else {
+          return s.copyWith(tuteeNote: trimmed);
+        }
+      }
+      return s;
+    }).toList();
+
+    notifyListeners();
+    return null;
+  }
+
+  String? requestCancel(String sessionId) {
+    if (_currentUser == null) return 'Not logged in.';
+    final session = sessionById(sessionId);
+    if (session == null) return 'Session not found.';
+    if (session.status != SessionStatus.active) {
+      return 'Session is not active.';
+    }
+    if (session.cancelRequestedBy != null || session.completeRequestedBy != null) {
+      return 'A cancellation or completion request is already pending.';
+    }
+
+    final isTutor = session.tutor.toLowerCase() == _currentUser!.username.toLowerCase();
+    final isTutee = session.tutee.toLowerCase() == _currentUser!.username.toLowerCase();
+    if (!isTutor && !isTutee) return 'You are not part of this session.';
+
+    final otherUser = isTutor ? session.tutee : session.tutor;
+    final now = DateTime.now();
+
+    _sessions = _sessions.map((s) {
+      if (s.id == sessionId) {
+        return s.copyWith(cancelRequestedBy: _currentUser!.username);
+      }
+      return s;
+    }).toList();
+
+    final notif = AppNotification(
+      id: '${now.millisecondsSinceEpoch}_req_canc',
+      recipient: otherUser,
+      type: NotificationType.cancelRequested,
+      message: '@${_currentUser!.username} wants to cancel the session for ${session.subject} (${session.course}).',
+      sessionId: sessionId,
+      createdAt: now,
+      read: false,
+    );
+    _notifications = [..._notifications, notif];
+    notifyListeners();
+    return null;
+  }
+
+  String? withdrawCancelRequest(String sessionId) {
+    if (_currentUser == null) return 'Not logged in.';
+    final session = sessionById(sessionId);
+    if (session == null) return 'Session not found.';
+    if (session.cancelRequestedBy == null ||
+        session.cancelRequestedBy!.toLowerCase() != _currentUser!.username.toLowerCase()) {
+      return 'You did not request cancellation.';
+    }
+
+    _sessions = _sessions.map((s) {
+      if (s.id == sessionId) {
+        return s.copyWith(cancelRequestedBy: null);
+      }
+      return s;
+    }).toList();
+    notifyListeners();
+    return null;
+  }
+
+  String? confirmCancel(String sessionId) {
+    if (_currentUser == null) return 'Not logged in.';
+    final session = sessionById(sessionId);
+    if (session == null) return 'Session not found.';
+    if (session.cancelRequestedBy == null) return 'No cancellation requested.';
+    if (session.cancelRequestedBy!.toLowerCase() == _currentUser!.username.toLowerCase()) {
+      return 'You cannot confirm your own cancellation request.';
+    }
+
+    final requester = session.cancelRequestedBy!;
+    final now = DateTime.now();
+
+    _sessions = _sessions.map((s) {
+      if (s.id == sessionId) {
+        return s.copyWith(status: SessionStatus.cancelled, cancelRequestedBy: null);
+      }
+      return s;
+    }).toList();
+
+    final notif = AppNotification(
+      id: '${now.millisecondsSinceEpoch}_conf_canc',
+      recipient: requester,
+      type: NotificationType.cancelConfirmed,
+      message: 'Your cancellation request for ${session.subject} was confirmed by @${_currentUser!.username}.',
+      sessionId: sessionId,
+      createdAt: now,
+      read: false,
+    );
+    _notifications = [..._notifications, notif];
+    notifyListeners();
+    return null;
+  }
+
+  String? declineCancel(String sessionId) {
+    if (_currentUser == null) return 'Not logged in.';
+    final session = sessionById(sessionId);
+    if (session == null) return 'Session not found.';
+    if (session.cancelRequestedBy == null) return 'No cancellation requested.';
+    if (session.cancelRequestedBy!.toLowerCase() == _currentUser!.username.toLowerCase()) {
+      return 'You cannot decline your own cancellation request.';
+    }
+
+    final requester = session.cancelRequestedBy!;
+    final now = DateTime.now();
+
+    _sessions = _sessions.map((s) {
+      if (s.id == sessionId) {
+        return s.copyWith(cancelRequestedBy: null);
+      }
+      return s;
+    }).toList();
+
+    final notif = AppNotification(
+      id: '${now.millisecondsSinceEpoch}_dec_canc',
+      recipient: requester,
+      type: NotificationType.cancelDeclined,
+      message: 'Your cancellation request for ${session.subject} was declined by @${_currentUser!.username}.',
+      sessionId: sessionId,
+      createdAt: now,
+      read: false,
+    );
+    _notifications = [..._notifications, notif];
+    notifyListeners();
+    return null;
+  }
+
+  String? requestComplete(String sessionId) {
+    if (_currentUser == null) return 'Not logged in.';
+    final session = sessionById(sessionId);
+    if (session == null) return 'Session not found.';
+    if (session.status != SessionStatus.active) {
+      return 'Session is not active.';
+    }
+    if (session.cancelRequestedBy != null) {
+      return 'Cannot request completion while cancellation is pending.';
+    }
+    if (session.completeRequestedBy != null) {
+      return 'Completion request already pending.';
+    }
+
+    final isTutor = session.tutor.toLowerCase() == _currentUser!.username.toLowerCase();
+    final isTutee = session.tutee.toLowerCase() == _currentUser!.username.toLowerCase();
+    if (!isTutor && !isTutee) return 'You are not part of this session.';
+
+    final otherUser = isTutor ? session.tutee : session.tutor;
+    final now = DateTime.now();
+
+    _sessions = _sessions.map((s) {
+      if (s.id == sessionId) {
+        return s.copyWith(completeRequestedBy: _currentUser!.username);
+      }
+      return s;
+    }).toList();
+
+    final notif = AppNotification(
+      id: '${now.millisecondsSinceEpoch}_req_comp',
+      recipient: otherUser,
+      type: NotificationType.completeRequested,
+      message: '@${_currentUser!.username} marked the session for ${session.subject} (${session.course}) as completed.',
+      sessionId: sessionId,
+      createdAt: now,
+      read: false,
+    );
+    _notifications = [..._notifications, notif];
+    notifyListeners();
+    return null;
+  }
+
+  String? withdrawCompleteRequest(String sessionId) {
+    if (_currentUser == null) return 'Not logged in.';
+    final session = sessionById(sessionId);
+    if (session == null) return 'Session not found.';
+    if (session.completeRequestedBy == null ||
+        session.completeRequestedBy!.toLowerCase() != _currentUser!.username.toLowerCase()) {
+      return 'You did not request completion.';
+    }
+
+    _sessions = _sessions.map((s) {
+      if (s.id == sessionId) {
+        return s.copyWith(completeRequestedBy: null);
+      }
+      return s;
+    }).toList();
+    notifyListeners();
+    return null;
+  }
+
+  String? confirmComplete(String sessionId) {
+    if (_currentUser == null) return 'Not logged in.';
+    final session = sessionById(sessionId);
+    if (session == null) return 'Session not found.';
+    if (session.completeRequestedBy == null) return 'No completion requested.';
+    if (session.completeRequestedBy!.toLowerCase() == _currentUser!.username.toLowerCase()) {
+      return 'You cannot confirm your own completion request.';
+    }
+
+    final now = DateTime.now();
+
+    _sessions = _sessions.map((s) {
+      if (s.id == sessionId) {
+        return s.copyWith(status: SessionStatus.completed, completeRequestedBy: null);
+      }
+      return s;
+    }).toList();
+
+    final notifTutor = AppNotification(
+      id: '${now.millisecondsSinceEpoch}_comp_tutor',
+      recipient: session.tutor,
+      type: NotificationType.sessionCompleted,
+      message: 'Session with @${session.tutee} for ${session.subject} completed.',
+      sessionId: sessionId,
+      createdAt: now,
+      read: false,
+    );
+
+    final notifTutee = AppNotification(
+      id: '${now.millisecondsSinceEpoch}_comp_tutee',
+      recipient: session.tutee,
+      type: NotificationType.sessionCompleted,
+      message: 'Session with @${session.tutor} for ${session.subject} completed. Rate your tutor @${session.tutor}!',
+      sessionId: sessionId,
+      createdAt: now,
+      read: false,
+    );
+
+    _notifications = [..._notifications, notifTutor, notifTutee];
+    notifyListeners();
+    return null;
+  }
+
+  String? rateTutor(String sessionId, int stars, String comment) {
+    if (_currentUser == null) return 'Not logged in.';
+    final session = sessionById(sessionId);
+    if (session == null) return 'Session not found.';
+    if (session.status != SessionStatus.completed) {
+      return 'Session must be completed before rating.';
+    }
+    if (session.rated) {
+      return 'Session has already been rated.';
+    }
+    if (session.tutee.toLowerCase() != _currentUser!.username.toLowerCase()) {
+      return 'Only the tutee can rate the tutor.';
+    }
+    if (stars < 1 || stars > 5) {
+      return 'Rating must be between 1 and 5 stars.';
+    }
+    final trimmedComment = comment.trim();
+    if (trimmedComment.length > 200) {
+      return 'Comment must be at most 200 characters.';
+    }
+
+    final tutorUser = userByUsername(session.tutor);
+    if (tutorUser == null) return 'Tutor profile not found.';
+
+    final newRating = Rating(
+      stars: stars,
+      comment: trimmedComment,
+      fromUsername: session.tutee,
+    );
+    final updatedRatings = [...tutorUser.ratings, newRating];
+    final updatedTutorProfile = tutorUser.copyWith(ratings: updatedRatings);
+
+    _users[tutorUser.username.toLowerCase()] = updatedTutorProfile;
+
+    _sessions = _sessions.map((s) {
+      if (s.id == sessionId) {
+        return s.copyWith(rated: true);
+      }
+      return s;
+    }).toList();
+
+    if (_currentUser!.username.toLowerCase() == tutorUser.username.toLowerCase()) {
+      _currentUser = updatedTutorProfile;
+    }
+
+    notifyListeners();
+    return null;
+  }
+
+  List<TutoringSession> sessionsToRate(String username) {
+    return _sessions
+        .where((s) =>
+            s.status == SessionStatus.completed &&
+            !s.rated &&
+            s.tutee.toLowerCase() == username.toLowerCase())
+        .toList();
   }
 
   List<AppNotification> notificationsFor(String username) {

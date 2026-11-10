@@ -15,16 +15,11 @@ void main() {
   testWidgets('Login with demo user alice shows HomeScreen', (WidgetTester tester) async {
     await tester.pumpWidget(const StudyFirstApp());
 
-    // Enter username alice
     await tester.enterText(find.byType(TextField).at(0), 'alice');
-    // Enter password demo123
     await tester.enterText(find.byType(TextField).at(1), 'demo123');
-
-    // Tap Login button
     await tester.tap(find.text('Login'));
     await tester.pumpAndSettle();
 
-    // Verify HomeScreen is shown
     expect(find.text('My Sessions'), findsOneWidget);
     expect(find.text('Become a tutor'), findsOneWidget);
     expect(find.text('Need a tutor'), findsOneWidget);
@@ -38,7 +33,6 @@ void main() {
     await tester.tap(find.text('Login'));
     await tester.pumpAndSettle();
 
-    // Tap "Need a tutor"
     await tester.tap(find.text('Need a tutor'));
     await tester.pumpAndSettle();
 
@@ -54,46 +48,63 @@ void main() {
     await tester.tap(find.text('Login'));
     await tester.pumpAndSettle();
 
-    // Tap "Become a tutor"
     await tester.tap(find.text('Become a tutor'));
     await tester.pumpAndSettle();
 
     expect(find.text('Browse Posts'), findsOneWidget);
-    // Bob's post (PHYS 101) should appear
     expect(find.text('PHYS 101'), findsOneWidget);
-    // Alice's own posts (MATH 101) should NOT appear in browse posts
     expect(find.text('MATH 101'), findsNothing);
   });
 
   testWidgets('Alice accepts bobs seeded offer, notifications clear, session appears on home', (WidgetTester tester) async {
     await tester.pumpWidget(const StudyFirstApp());
 
-    // Login as alice (who has a seeded notification from bob)
     await tester.enterText(find.byType(TextField).at(0), 'alice');
     await tester.enterText(find.byType(TextField).at(1), 'demo123');
     await tester.tap(find.text('Login'));
     await tester.pumpAndSettle();
 
-    // Tap notification bell
     await tester.tap(find.byIcon(Icons.notifications));
     await tester.pumpAndSettle();
 
-    // Verify notification message is shown
     expect(find.textContaining('bob wants to tutor you'), findsOneWidget);
 
-    // Tap Accept button
     await tester.tap(find.text('Accept'));
     await tester.pumpAndSettle();
 
-    // Verify SnackBar "Session created"
     expect(find.text('Session created'), findsOneWidget);
 
-    // Go back to Home
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    // Verify session card appears on Home
-    expect(find.textContaining('is tutoring you'), findsOneWidget);
+    expect(find.textContaining('@bob is tutoring you'), findsOneWidget);
+  });
+
+  testWidgets('Alice opens seeded charlie session, taps Session completed, confirms dialog, sees Waiting for charlie', (WidgetTester tester) async {
+    await tester.pumpWidget(const StudyFirstApp());
+
+    await tester.enterText(find.byType(TextField).at(0), 'alice');
+    await tester.enterText(find.byType(TextField).at(1), 'demo123');
+    await tester.tap(find.text('Login'));
+    await tester.pumpAndSettle();
+
+    // Tap the seeded charlie session card on Home
+    await tester.tap(find.text('HIST 101'));
+    await tester.pumpAndSettle();
+
+    // Scroll down to Session completed button if needed and tap
+    final completeBtn = find.text('Session completed');
+    await tester.ensureVisible(completeBtn);
+    await tester.tap(completeBtn);
+    await tester.pumpAndSettle();
+
+    // Confirm completion dialog
+    final confirmBtn = find.text('Confirm');
+    expect(confirmBtn, findsOneWidget);
+    await tester.tap(confirmBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Waiting for @charlie'), findsOneWidget);
   });
 
   test('AppState enforces maximum of 3 open posts per user', () {
@@ -124,28 +135,22 @@ void main() {
     appState.login('alice', 'demo123');
     final alicePostId = appState.openPostsBy('alice').first.id;
 
-    // 1. Cannot offer on own post
     final errOwn = appState.sendOffer(alicePostId);
     expect(errOwn, 'You cannot offer on your own post.');
 
-    // Bob logs in
     appState.login('bob', 'demo123');
 
     final alicePost2Id = appState.openPostsBy('alice')[1].id;
     final err1 = appState.sendOffer(alicePost2Id);
     expect(err1, null);
 
-    // 2. Cannot offer twice on the same post
     final errDouble = appState.sendOffer(alicePost2Id);
     expect(errDouble, 'You already sent a request for this post.');
 
-    // Bob already has offer_1 (on post_1) and err1 (on post_2). Add 3rd pending offer on charlie's post.
     final charliePostId = appState.openPostsBy('charlie').first.id;
     final err3 = appState.sendOffer(charliePostId);
     expect(err3, null);
 
-    // Now bob has 3 pending offers (offer_1, post_2, charliePostId).
-    // Let's create a 4th post by charlie to test max 3 pending offers limit
     appState.login('charlie', 'demo123');
     appState.createPost(subject: 'Art', course: 'ART 102', description: 'Help with sculpture');
     final charliePost2Id = appState.openPostsBy('charlie').last.id;
@@ -162,14 +167,13 @@ void main() {
     final offerId = appState.offers.first.id;
     final postId = appState.offers.first.postId;
 
-    expect(appState.sessions.isEmpty, true);
-
     final err = appState.acceptOffer(offerId);
     expect(err, null);
 
-    expect(appState.sessionsFor('alice').length, 1);
-    expect(appState.sessionsFor('alice').first.tutor, 'bob');
-    expect(appState.sessionsFor('alice').first.tutee, 'alice');
+    expect(appState.sessionsFor('alice').length, 2); // includes seeded session_charlie_alice
+    final matchedSession = appState.sessionsFor('alice').firstWhere((s) => s.postId == postId);
+    expect(matchedSession.tutor, 'bob');
+    expect(matchedSession.tutee, 'alice');
 
     final post = appState.posts.firstWhere((p) => p.id == postId);
     expect(post.status, PostStatus.matched);
@@ -197,5 +201,63 @@ void main() {
     appState.acceptOffer(offerId);
 
     expect(appState.hasActiveSessionBetween('alice', 'bob'), true);
+  });
+
+  test('AppState Step 7 tests: updateSessionNote, cancel flow, complete flow, rateTutor', () {
+    final appState = AppState();
+    appState.login('alice', 'demo123');
+    const sessionId = 'session_charlie_alice';
+
+    // 1. updateSessionNote
+    final errNote = appState.updateSessionNote(sessionId, 'Meet at library');
+    expect(errNote, null);
+    expect(appState.sessionById(sessionId)?.tuteeNote, 'Meet at library');
+
+    // Tutor note cannot be changed by tutee
+    appState.login('charlie', 'demo123');
+    expect(appState.sessionById(sessionId)?.tutorNote, '');
+    appState.updateSessionNote(sessionId, 'Bring notes');
+    expect(appState.sessionById(sessionId)?.tutorNote, 'Bring notes');
+
+    // 2. Cancel flow
+    appState.login('alice', 'demo123');
+    final errReqCancel = appState.requestCancel(sessionId);
+    expect(errReqCancel, null);
+    expect(appState.sessionById(sessionId)?.cancelRequestedBy, 'alice');
+
+    // Requester cannot confirm own request
+    final errSelfConf = appState.confirmCancel(sessionId);
+    expect(errSelfConf, 'You cannot confirm your own cancellation request.');
+
+    // Other person confirms
+    appState.login('charlie', 'demo123');
+    final errConf = appState.confirmCancel(sessionId);
+    expect(errConf, null);
+    expect(appState.sessionById(sessionId)?.status, SessionStatus.cancelled);
+    expect(appState.sessionsFor('alice').where((s) => s.id == sessionId).isEmpty, true);
+
+    // 3. Complete and Rate flow
+    appState.login('alice', 'demo123');
+    final offerId = appState.offers.first.id;
+    appState.acceptOffer(offerId);
+    final newSessionId = appState.sessionsFor('alice').firstWhere((s) => s.id != sessionId).id;
+
+    appState.login('bob', 'demo123');
+    appState.requestComplete(newSessionId);
+
+    appState.login('alice', 'demo123');
+    appState.confirmComplete(newSessionId);
+    expect(appState.sessionById(newSessionId)?.status, SessionStatus.completed);
+
+    final bobBeforeRating = appState.userByUsername('bob')!;
+    final errRate = appState.rateTutor(newSessionId, 5, 'Awesome tutor!');
+    expect(errRate, null);
+
+    final bobAfterRating = appState.userByUsername('bob')!;
+    expect(bobAfterRating.ratings.length, bobBeforeRating.ratings.length + 1);
+    expect(bobAfterRating.averageRating, isNotNull);
+
+    final errRateAgain = appState.rateTutor(newSessionId, 4, 'Again');
+    expect(errRateAgain, 'Session has already been rated.');
   });
 }

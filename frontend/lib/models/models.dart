@@ -4,7 +4,16 @@ enum PostStatus { open, matched, cancelled }
 
 enum OfferStatus { pending, accepted, declined, withdrawn }
 
-enum NotificationType { newOffer, offerAccepted, offerDeclined }
+enum NotificationType {
+  newOffer,
+  offerAccepted,
+  offerDeclined,
+  cancelRequested,
+  cancelConfirmed,
+  cancelDeclined,
+  completeRequested,
+  sessionCompleted,
+}
 
 enum SessionStatus { active, completed, cancelled }
 
@@ -106,6 +115,7 @@ class AppNotification {
   final NotificationType type;
   final String message;
   final String? offerId;
+  final String? sessionId;
   final DateTime createdAt;
   final bool read;
 
@@ -115,6 +125,7 @@ class AppNotification {
     required this.type,
     required this.message,
     this.offerId,
+    this.sessionId,
     required this.createdAt,
     this.read = false,
   });
@@ -125,6 +136,7 @@ class AppNotification {
     NotificationType? type,
     String? message,
     String? offerId,
+    String? sessionId,
     DateTime? createdAt,
     bool? read,
   }) {
@@ -134,6 +146,7 @@ class AppNotification {
       type: type ?? this.type,
       message: message ?? this.message,
       offerId: offerId ?? this.offerId,
+      sessionId: sessionId ?? this.sessionId,
       createdAt: createdAt ?? this.createdAt,
       read: read ?? this.read,
     );
@@ -149,6 +162,11 @@ class TutoringSession {
   final String postId;
   final DateTime createdAt;
   final SessionStatus status;
+  final String tutorNote;
+  final String tuteeNote;
+  final String? cancelRequestedBy;
+  final String? completeRequestedBy;
+  final bool rated;
 
   TutoringSession({
     required this.id,
@@ -159,6 +177,11 @@ class TutoringSession {
     required this.postId,
     required this.createdAt,
     required this.status,
+    this.tutorNote = '',
+    this.tuteeNote = '',
+    this.cancelRequestedBy,
+    this.completeRequestedBy,
+    this.rated = false,
   });
 
   TutoringSession copyWith({
@@ -170,6 +193,11 @@ class TutoringSession {
     String? postId,
     DateTime? createdAt,
     SessionStatus? status,
+    String? tutorNote,
+    String? tuteeNote,
+    String? cancelRequestedBy,
+    String? completeRequestedBy,
+    bool? rated,
   }) {
     return TutoringSession(
       id: id ?? this.id,
@@ -180,6 +208,11 @@ class TutoringSession {
       postId: postId ?? this.postId,
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
+      tutorNote: tutorNote ?? this.tutorNote,
+      tuteeNote: tuteeNote ?? this.tuteeNote,
+      cancelRequestedBy: cancelRequestedBy,
+      completeRequestedBy: completeRequestedBy,
+      rated: rated ?? this.rated,
     );
   }
 }
