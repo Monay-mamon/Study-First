@@ -45,6 +45,25 @@ void main() {
     expect(find.text('Post request'), findsOneWidget);
   });
 
+  testWidgets('Alice opens Become a tutor and sees other users posts, not her own', (WidgetTester tester) async {
+    await tester.pumpWidget(const StudyFirstApp());
+
+    await tester.enterText(find.byType(TextField).at(0), 'alice');
+    await tester.enterText(find.byType(TextField).at(1), 'demo123');
+    await tester.tap(find.text('Login'));
+    await tester.pumpAndSettle();
+
+    // Tap "Become a tutor"
+    await tester.tap(find.text('Become a tutor'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Browse Posts'), findsOneWidget);
+    // Bob's post (PHYS 101) should appear
+    expect(find.text('PHYS 101'), findsOneWidget);
+    // Alice's own posts (MATH 101) should NOT appear in browse posts
+    expect(find.text('MATH 101'), findsNothing);
+  });
+
   test('AppState enforces maximum of 3 open posts per user', () {
     final appState = AppState();
     appState.register('student1', 'pass123');
@@ -66,5 +85,41 @@ void main() {
       description: 'Need help with topic 4',
     );
     expect(error4, 'You can only have 3 open requests.');
+  });
+
+  test('AppState tutor offer rules: own post, duplicate offer, max 3 pending offers', () {
+    final appState = AppState();
+    appState.login('alice', 'demo123');
+    final alicePostId = appState.openPostsBy('alice').first.id;
+
+    // 1. Cannot offer on own post
+    final errOwn = appState.sendOffer(alicePostId);
+    expect(errOwn, 'You cannot offer on your own post.');
+
+    // Bob logs in
+    appState.login('bob', 'demo123');
+
+    final alicePost2Id = appState.openPostsBy('alice')[1].id;
+    final err1 = appState.sendOffer(alicePost2Id);
+    expect(err1, null);
+
+    // 2. Cannot offer twice on the same post
+    final errDouble = appState.sendOffer(alicePost2Id);
+    expect(errDouble, 'You already sent a request for this post.');
+
+    // Bob already has offer_1 (on post_1) and err1 (on post_2). Add 3rd pending offer on charlie's post.
+    final charliePostId = appState.openPostsBy('charlie').first.id;
+    final err3 = appState.sendOffer(charliePostId);
+    expect(err3, null);
+
+    // Now bob has 3 pending offers (offer_1, post_2, charliePostId).
+    // Let's create a 4th post by charlie to test max 3 pending offers limit
+    appState.login('charlie', 'demo123');
+    appState.createPost(subject: 'Art', course: 'ART 102', description: 'Help with sculpture');
+    final charliePost2Id = appState.openPostsBy('charlie').last.id;
+
+    appState.login('bob', 'demo123');
+    final err4 = appState.sendOffer(charliePost2Id);
+    expect(err4, 'You can only have 3 pending requests.');
   });
 }

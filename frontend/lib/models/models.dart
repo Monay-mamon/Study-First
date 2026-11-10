@@ -2,6 +2,8 @@ enum YearLevel { freshman, sophomore, junior, senior }
 
 enum PostStatus { open, matched, cancelled }
 
+enum OfferStatus { pending, accepted, declined, withdrawn }
+
 class Rating {
   final int stars;
   final String comment;
@@ -54,6 +56,42 @@ class HelpPost {
       description: description ?? this.description,
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
+    );
+  }
+}
+
+class TutorOffer {
+  final String id;
+  final String postId;
+  final String tutor; // username
+  final String tutee; // username
+  final OfferStatus status;
+  final DateTime createdAt;
+
+  TutorOffer({
+    required this.id,
+    required this.postId,
+    required this.tutor,
+    required this.tutee,
+    required this.status,
+    required this.createdAt,
+  });
+
+  TutorOffer copyWith({
+    String? id,
+    String? postId,
+    String? tutor,
+    String? tutee,
+    OfferStatus? status,
+    DateTime? createdAt,
+  }) {
+    return TutorOffer(
+      id: id ?? this.id,
+      postId: postId ?? this.postId,
+      tutor: tutor ?? this.tutor,
+      tutee: tutee ?? this.tutee,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }

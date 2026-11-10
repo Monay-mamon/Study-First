@@ -6,15 +6,18 @@ class AppState extends ChangeNotifier {
   final Map<String, UserProfile> _users = {};
   UserProfile? _currentUser;
   List<HelpPost> _posts = [];
+  List<TutorOffer> _offers = [];
 
   AppState() {
     _seedDemoUsers();
     _seedDemoPosts();
+    _seedDemoOffers();
   }
 
   UserProfile? get currentUser => _currentUser;
   Map<String, UserProfile> get users => _users;
   List<HelpPost> get posts => List.unmodifiable(_posts);
+  List<TutorOffer> get offers => List.unmodifiable(_offers);
 
   UserProfile? userByUsername(String username) {
     return _users[username.trim().toLowerCase()];
@@ -124,6 +127,19 @@ class AppState extends ChangeNotifier {
     ];
   }
 
+  void _seedDemoOffers() {
+    _offers = [
+      TutorOffer(
+        id: 'offer_1',
+        postId: 'post_1', // alice's post
+        tutor: 'bob',
+        tutee: 'alice',
+        status: OfferStatus.pending,
+        createdAt: DateTime.now().subtract(const Duration(hours: 2)),
+      ),
+    ];
+  }
+
   String? createPost({
     required String subject,
     required String course,
@@ -185,6 +201,70 @@ class AppState extends ChangeNotifier {
             p.tutee.toLowerCase() == username.toLowerCase() &&
             p.status == PostStatus.open)
         .toList();
+  }
+
+  String? sendOffer(String postId) {
+    if (_currentUser == null) {
+      return 'You must be logged in to send an offer.';
+    }
+    final post = _posts.cast<HelpPost?>().firstWhere(
+          (p) => p?.id == postId,
+          orElse: () => null,
+        );
+    if (post == null) {
+      return 'Post not found.';
+    }
+    if (post.tutee.toLowerCase() == _currentUser!.username.toLowerCase()) {
+      return 'You cannot offer on your own post.';
+    }
+    if (post.status != PostStatus.open) {
+      return 'This post is no longer open.';
+    }
+    if (hasPendingOffer(_currentUser!.username, postId)) {
+      return 'You already sent a request for this post.';
+    }
+    final pendingCount = pendingOffersBy(_currentUser!.username).length;
+    if (pendingCount >= 3) {
+      return 'You can only have 3 pending requests.';
+    }
+
+    final newOffer = TutorOffer(
+      id: '${DateTime.now().millisecondsSinceEpoch}_${_offers.length}',
+      postId: postId,
+      tutor: _currentUser!.username,
+      tutee: post.tutee,
+      status: OfferStatus.pending,
+      createdAt: DateTime.now(),
+    );
+
+    _offers = [..._offers, newOffer];
+    notifyListeners();
+    return null;
+  }
+
+  void withdrawOffer(String id) {
+    _offers = _offers.map((o) {
+      if (o.id == id) {
+        return o.copyWith(status: OfferStatus.withdrawn);
+      }
+      return o;
+    }).toList();
+    notifyListeners();
+  }
+
+  List<TutorOffer> pendingOffersBy(String tutor) {
+    return _offers
+        .where((o) =>
+            o.tutor.toLowerCase() == tutor.toLowerCase() &&
+            o.status == OfferStatus.pending)
+        .toList();
+  }
+
+  bool hasPendingOffer(String tutor, String postId) {
+    return _offers.any((o) =>
+        o.tutor.toLowerCase() == tutor.toLowerCase() &&
+        o.postId == postId &&
+        o.status == OfferStatus.pending);
   }
 
   String? register(String username, String password) {

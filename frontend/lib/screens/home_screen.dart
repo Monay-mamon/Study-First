@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../data/app_state.dart';
+import 'browse_posts_screen.dart';
 import 'need_tutor_screen.dart';
 import 'profile_screen.dart';
 
@@ -103,8 +104,11 @@ class HomeScreen extends StatelessWidget {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Coming in the next step')),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const BrowsePostsScreen(),
+                          ),
                         );
                       },
                       icon: const Icon(Icons.school),
